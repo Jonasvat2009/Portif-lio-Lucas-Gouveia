@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arena do Caos</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    background: #050505;
+    color: white;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    overflow: hidden;
+}
+
+h1 {
+    font-size: 25px;
+    letter-spacing: 8px;
+    margin: 0 0 18px;
+    text-shadow: 0 0 15px white;
+}
+
+.arena-container {
+    position: relative;
+    width: 65vmin;
+    height: 65vmin;
+    max-width: 450px;
+    max-height: 450px;
+    border-radius: 50%;
+    border: 3px solid #333;
+    background: #0a0a0a;
+    overflow: hidden;
+    box-shadow: 0 0 50px rgba(255,255,255,.08);
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+}
+
+.scoreboard {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,.85);
+    border: 1px solid #444;
+    border-radius: 5px;
+    padding: 8px 12px;
+    font-size: 11px;
+    white-space: nowrap;
+    z-index: 5;
+}
+
+.result {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    z-index: 10;
+}
+
+.result[hidden] {
+    display: none;
+}
+
+.result h2 {
+    font-size: 30px;
+    letter-spacing: 4px;
+}
+
+.legend {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-top: 20px;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+.rng { color: #00ff00; text-shadow: 0 0 8px #00ff00; }
+.c1 { color: #00ccff; text-shadow: 0 0 8px #00ccff; }
+.c2 { color: #ffee00; text-shadow: 0 0 8px #ffee00; }
+.c3 { color: #ff0055; text-shadow: 0 0 8px #ff0055; }
+
+.estatisticas {
+    color: #888;
+    font-size: 11px;
+    text-align: center;
+    margin-top: 12px;
+    line-height: 2;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+button {
+    background: #111;
+    color: white;
+    border: 1px solid #444;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-family: monospace;
+}
+
+button:hover {
+    background: #333;
+    border-color: white;
+}
+
+.voltar {
+    color: #777;
+    text-decoration: none;
+    font-size: 13px;
+}
+
+.voltar:hover {
+    color: white;
+}
+
+.poder {
+    margin-top: 14px;
+    text-align: center;
+    color: #00ccff;
+    font-size: 12px;
+    line-height: 1.8;
+    text-shadow: 0 0 8px #00ccff;
+}
+
+.poder strong {
+    font-size: 17px;
+}
+
+@media(max-width: 500px) {
+    h1 {
+        font-size: 18px;
+    }
+
+    .legend {
+        gap: 12px;
+        font-size: 11px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<h1>ARENA DO CAOS</h1>
+
+<div class="arena-container">
+
+    <canvas id="arena"></canvas>
+
+    <div class="scoreboard" id="score">
+        PREPARANDO BATALHA
+    </div>
+
+    <div class="result" id="result" hidden>
+        <h2 id="resultadoTitulo">VITÓRIA!</h2>
+        <div id="resultadoNome"></div>
+        <p id="resultadoDescricao"></p>
+    </div>
+
+</div>
+
+<div class="legend">
+    <span class="rng">RNG</span>
+    <span class="c1">CAOS 1</span>
+    <span class="c2">CAOS 2</span>
+    <span class="c3">CAOS 3</span>
+</div>
+
+<div class="estatisticas" id="estatisticas">
+    PREPARANDO COMPETIDORES...
+</div>
+
+<div class="poder">
+    <strong>⚡ PODER DO JOGADOR</strong><br>
+    MOUSE: DIREÇÃO DO LASER | K: DISPARAR
+</div>
+
+<div class="controls">
+
+    <button onclick="alternarPausa()" id="pausa">
+        PAUSAR
+    </button>
+
+    <button onclick="alternarVelocidade()" id="velocidade">
+        VELOCIDADE: NORMAL
+    </button>
+
+    <button onclick="resetSimulation()">
+        NOVA BATALHA
+    </button>
+
+    <a href="index.html" class="voltar">Voltar</a>
+
+</div>
+
+<script>
+
+// ======================================
+// CONFIGURAÇÕES
+// ======================================
+
+const canvas = document.getElementById('arena');
+const ctx = canvas.getContext('2d');
+
+const scoreDiv = document.getElementById('score');
+const estatisticas = document.getElementById('estatisticas');
+const resultDiv = document.getElementById('result');
+
+const TAMANHO = 160;
+
+canvas.width = TAMANHO;
+canvas.height = TAMANHO;
+
+const CENTRO = TAMANHO / 2;
+const RAIO = CENTRO - 3;
+
+const CORES = [
+    [0, 255, 0],
+    [0, 200, 255],
+    [255, 238, 0],
+    [255, 0, 85]
+];
+
+const NOMES = [
+    'RNG',
+    'CAOS 1',
+    'CAOS 2',
+    'CAOS 3'
+];
+
+const DIRECOES = [
+    {x: 0, y: -1},
+    {x: 1, y: 0},
+    {x: 0, y: 1},
+    {x: -1, y: 0}
+];
+
+let grid = new Int8Array(TAMANHO * TAMANHO);
+
+let formigas = [];
+
+let rodando = true;
+let terminou = false;
+
+let velocidade = 1;
+let rodada = 0;
+
+let animacao = null;
+
+// Posição do mouse dentro da arena.
+let mouseX = CENTRO;
+let mouseY = CENTRO;
+
+// Efeito visual do laser.
+let laserEffect = null;
+
+// Atualiza a posição do alvo conforme o mouse se move sobre a arena.
+canvas.addEventListener('pointermove', function(event) {
+
+    const rect = canvas.getBoundingClientRect();
+
+    mouseX = (event.clientX - rect.left) * TAMANHO / rect.width;
+    mouseY = (event.clientY - rect.top) * TAMANHO / rect.height;
+
+});
+
+const imageData = ctx.createImageData(TAMANHO, TAMANHO);
+const pixels = imageData.data;
+
+
+// ======================================
+// FUNÇÕES AUXILIARES
+// ======================================
+
+function indice(x, y) {
+    return y * TAMANHO + x;
+}
+
+function dentroDoCirculo(x, y) {
+
+    const dx = x - CENTRO;
+    const dy = y - CENTRO;
+
+    return dx * dx + dy * dy <= RAIO * RAIO;
+}
+
+function embaralhar(lista) {
+
+    const resultado = [...lista];
+
+    for (let i = resultado.length - 1; i > 0; i--) {
+
+        const j = Math.floor(Math.random() * (i + 1));
+
+        [resultado[i], resultado[j]] =
+            [resultado[j], resultado[i]];
+    }
+
+    return resultado;
+}
+
+function contarAtivas() {
+    return formigas.filter(f => f.viva);
+}
+
+
+// ======================================
+// INICIALIZAÇÃO
+// ======================================
+
+function initCanvas() {
+
+    ctx.fillStyle = '#0a0a0a';
+
+    ctx.fillRect(0, 0, TAMANHO, TAMANHO);
+
+    ctx.beginPath();
+
+    ctx.arc(CENTRO, CENTRO, RAIO, 0, Math.PI * 2);
+
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+
+    ctx.stroke();
+}
+
+
+// ======================================
+// CRIAR FORMIGAS
+// ======================================
+
+function criarFormigas() {
+
+    formigas = [];
+
+    const posicoes = [
+        {x: CENTRO, y: CENTRO - 60},
+        {x: CENTRO + 60, y: CENTRO},
+        {x: CENTRO, y: CENTRO + 60},
+        {x: CENTRO - 60, y: CENTRO}
+    ];
+
+    const posicoesSorteadas = embaralhar(posicoes);
+
+    for (let i = 0; i < 4; i++) {
+
+        const posicao = posicoesSorteadas[i];
+
+        const formiga = {
+            id: i + 1,
+            x: posicao.x,
+            y: posicao.y,
+            viva: true,
+            movimentos: 0,
+            territorio: 1
+        };
+
+        formigas.push(formiga);
+
+        grid[indice(formiga.x, formiga.y)] = formiga.id;
+    }
+}
+
+
+// ======================================
+// BUSCAR TERRITÓRIO NÃO PINTADO
+// ======================================
+
+// Quantas novas células cada formiga tenta pintar por rodada.
+const CELULAS_POR_RODADA = 4;
+
+// Limite de deslocamentos para não gastar uma rodada inteira
+// atravessando o próprio território até encontrar uma área vazia.
+const MAX_MOVIMENTOS_POR_RODADA = 12;
+
+function encontrarCaminhoAteVazio(formiga) {
+
+    const total = TAMANHO * TAMANHO;
+    const inicio = indice(formiga.x, formiga.y);
+
+    const fila = new Int32Array(total);
+    const anterior = new Int32Array(total);
+    anterior.fill(-2);
+    anterior[inicio] = -1;
+
+    let inicioFila = 0;
+    let fimFila = 0;
+    fila[fimFila++] = inicio;
+
+    let destino = -1;
+
+    while (inicioFila < fimFila && destino === -1) {
+
+        const atual = fila[inicioFila++];
+        const x = atual % TAMANHO;
+        const y = Math.floor(atual / TAMANHO);
+
+        // Embaralha as direções para variar a exploração.
+        const direcoesSorteadas = embaralhar(DIRECOES);
+
+        for (const direcao of direcoesSorteadas) {
+
+            const novaX = x + direcao.x;
+            const novaY = y + direcao.y;
+
+            if (!dentroDoCirculo(novaX, novaY)) continue;
+
+            const proximo = indice(novaX, novaY);
+
+            if (anterior[proximo] !== -2) continue;
+
+            const estado = grid[proximo];
+
+            // A formiga atravessa o próprio território e áreas vazias,
+            // mas não atravessa o território das outras formigas.
+            if (estado !== 0 && estado !== formiga.id) continue;
+
+            anterior[proximo] = atual;
+
+            // Encontrou uma célula ainda não pintada.
+            if (estado === 0) {
+                destino = proximo;
+                break;
+            }
+
+            fila[fimFila++] = proximo;
+        }
+    }
+
+    if (destino === -1) return [];
+
+    // Reconstrói o caminho do destino até a posição atual.
+    const caminho = [];
+    let atual = destino;
+
+    while (atual !== inicio) {
+        caminho.push(atual);
+        atual = anterior[atual];
+    }
+
+    caminho.reverse();
+    return caminho;
+}
+
+
+// ======================================
+// MOVIMENTAÇÃO
+// ======================================
+
+function moverFormiga(formiga) {
+
+    if (!formiga.viva) return;
+
+    let celulasPintadas = 0;
+    let movimentosRealizados = 0;
+
+    // Continua procurando áreas vazias até pintar várias células.
+    while (
+        celulasPintadas < CELULAS_POR_RODADA &&
+        movimentosRealizados < MAX_MOVIMENTOS_POR_RODADA
+    ) {
+
+        const caminho = encontrarCaminhoAteVazio(formiga);
+
+        // Não existe mais território vazio alcançável.
+        if (caminho.length === 0) {
+            formiga.viva = false;
+            return;
+        }
+
+        // Avança um passo em direção à célula vazia encontrada.
+        const proximaPosicao = caminho[0];
+        formiga.x = proximaPosicao % TAMANHO;
+        formiga.y = Math.floor(proximaPosicao / TAMANHO);
+
+        const posicao = indice(formiga.x, formiga.y);
+
+        if (grid[posicao] === 0) {
+            grid[posicao] = formiga.id;
+            formiga.territorio++;
+            celulasPintadas++;
+        }
+
+        formiga.movimentos++;
+        movimentosRealizados++;
+    }
+}
+
+
+// ======================================
+// RODADA
+// ======================================
+
+function executarRodada() {
+
+    if (terminou) return;
+
+    rodada++;
+
+    const ordem = embaralhar(contarAtivas());
+
+    for (const formiga of ordem) {
+
+        if (!formiga.viva) continue;
+
+        moverFormiga(formiga);
+    }
+
+    verificarVencedor();
+}
+
+
+// ======================================
+// VERIFICAR VENCEDOR
+// ======================================
+
+function verificarVencedor() {
+
+    const sobreviventes = contarAtivas();
+
+    if (sobreviventes.length === 1) {
+
+        finalizarBatalha(sobreviventes[0]);
+
+    } else if (sobreviventes.length === 0) {
+
+        finalizarBatalha(null);
+    }
+}
+
+
+// ======================================
+// FINALIZAR BATALHA
+// ======================================
+
+function finalizarBatalha(vencedora) {
+
+    terminou = true;
+    rodando = false;
+
+    if (animacao !== null) {
+        cancelAnimationFrame(animacao);
+        animacao = null;
+    }
+
+    if (vencedora) {
+
+        const cor = CORES[vencedora.id - 1];
+
+        document.getElementById('resultadoTitulo').textContent =
+            'VITÓRIA!';
+
+        document.getElementById('resultadoTitulo').style.color =
+            `rgb(${cor.join(',')})`;
+
+        document.getElementById('resultadoNome').innerHTML = `
+            <h1 style="
+                color:rgb(${cor.join(',')});
+                font-size:35px;
+                letter-spacing:5px;
+                text-shadow:0 0 20px rgb(${cor.join(',')});
+            ">
+                ${NOMES[vencedora.id - 1]}
+            </h1>
+        `;
+
+        document.getElementById('resultadoDescricao').textContent =
+            `Vencedora após ${rodada} rodadas!`;
+
+    } else {
+
+        document.getElementById('resultadoTitulo').textContent =
+            'EMPATE!';
+
+        document.getElementById('resultadoTitulo').style.color =
+            'white';
+
+        document.getElementById('resultadoNome').innerHTML =
+            '<h2>NENHUMA SOBREVIVEU</h2>';
+
+        document.getElementById('resultadoDescricao').textContent =
+            'Todas as formigas foram eliminadas.';
+    }
+
+    resultDiv.hidden = false;
+
+    document.getElementById('pausa').textContent = 'FINALIZADO';
+
+    renderizar();
+    atualizarEstatisticas();
+}
+
+
+// ======================================
+// LASER DO JOGADOR
+// ======================================
+
+function dispararLaser() {
+
+    if (terminou) return;
+
+    const dx = mouseX - CENTRO;
+    const dy = mouseY - CENTRO;
+    const distanciaMouse = Math.sqrt(dx * dx + dy * dy);
+
+    if (distanciaMouse === 0) return;
+
+    // Mantém o alvo dentro do círculo, mesmo se o cursor estiver na borda.
+    const distanciaAlvo = Math.min(distanciaMouse, RAIO);
+    const direcaoX = dx / distanciaMouse;
+    const direcaoY = dy / distanciaMouse;
+
+    const alvoX = CENTRO + direcaoX * distanciaAlvo;
+    const alvoY = CENTRO + direcaoY * distanciaAlvo;
+
+    // O laser começa na borda oposta do círculo e aponta para o mouse.
+    const inicioX = CENTRO + direcaoX * RAIO;
+    const inicioY = CENTRO + direcaoY * RAIO;
+
+    const passos = Math.max(1, Math.ceil(RAIO - distanciaAlvo));
+
+    // Apaga somente as células atravessadas pelo laser.
+    // As formigas permanecem vivas e continuam se movimentando.
+    for (let i = 0; i <= passos; i++) {
+
+        const progresso = i / passos;
+        const x = Math.round(inicioX + (alvoX - inicioX) * progresso);
+        const y = Math.round(inicioY + (alvoY - inicioY) * progresso);
+
+        // Espessura da faixa apagada pelo disparo.
+        for (let ox = -2; ox <= 2; ox++) {
+            for (let oy = -2; oy <= 2; oy++) {
+
+                const px = x + ox;
+                const py = y + oy;
+
+                if (
+                    px >= 0 && px < TAMANHO &&
+                    py >= 0 && py < TAMANHO &&
+                    dentroDoCirculo(px, py)
+                ) {
+                    grid[indice(px, py)] = 0;
+                }
+            }
+        }
+    }
+
+    // Guarda o trajeto para desenhar o efeito visual.
+    laserEffect = {
+        inicioX,
+        inicioY,
+        fimX: alvoX,
+        fimY: alvoY,
+        frames: 12
+    };
+
+    renderizar();
+    atualizarEstatisticas();
+}
+
+
+// ======================================
+// CONTROLES DO TECLADO
+// ======================================
+
+document.addEventListener('keydown', function(event) {
+
+    const tecla = event.key.toLowerCase();
+
+    // K dispara o laser na direção do mouse.
+    if (tecla === 'k' && !event.repeat) {
+
+        dispararLaser();
+    }
+
+    // Espaço pausa e continua.
+    if (tecla === ' ' && !event.repeat) {
+
+        event.preventDefault();
+
+        alternarPausa();
+    }
+
+});
+
+
+// ======================================
+// DESENHAR ARENA
+// ======================================
+
+function renderizar() {
+
+    for (let i = 0; i < grid.length; i++) {
+
+        const pixel = i * 4;
+        const estado = grid[i];
+
+        if (estado === 0) {
+
+            pixels[pixel] = 10;
+            pixels[pixel + 1] = 10;
+            pixels[pixel + 2] = 10;
+
+        } else {
+
+            const cor = CORES[estado - 1];
+
+            pixels[pixel] = cor[0];
+            pixels[pixel + 1] = cor[1];
+            pixels[pixel + 2] = cor[2];
+        }
+
+        pixels[pixel + 3] = 255;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+
+    // Desenha cabeças das formigas.
+    for (const formiga of formigas) {
+
+        if (!formiga.viva) continue;
+
+        const cor = CORES[formiga.id - 1];
+
+        ctx.beginPath();
+
+        ctx.arc(
+            formiga.x,
+            formiga.y,
+            2.5,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle = '#ffffff';
+
+        ctx.shadowColor = `rgb(${cor.join(',')})`;
+        ctx.shadowBlur = 10;
+
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+    }
+
+    // Desenha o laser seguindo o trajeto entre a borda e o mouse.
+    if (laserEffect && laserEffect.frames > 0) {
+
+        const intensidade = laserEffect.frames / 12;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(laserEffect.inicioX, laserEffect.inicioY);
+        ctx.lineTo(laserEffect.fimX, laserEffect.fimY);
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2 + intensidade * 3;
+        ctx.shadowColor = '#00ccff';
+        ctx.shadowBlur = 25;
+        ctx.globalAlpha = intensidade;
+        ctx.stroke();
+
+        // Núcleo azul do laser.
+        ctx.beginPath();
+        ctx.moveTo(laserEffect.inicioX, laserEffect.inicioY);
+        ctx.lineTo(laserEffect.fimX, laserEffect.fimY);
+        ctx.strokeStyle = '#00ccff';
+        ctx.lineWidth = 5 * intensidade;
+        ctx.stroke();
+
+        ctx.restore();
+        laserEffect.frames--;
+    }
+
+    // Desenha a borda.
+    ctx.beginPath();
+
+    ctx.arc(CENTRO, CENTRO, RAIO, 0, Math.PI * 2);
+
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+
+    ctx.stroke();
+}
+
+
+// ======================================
+// ESTATÍSTICAS
+// ======================================
+
+function atualizarEstatisticas() {
+
+    const contagem = [0, 0, 0, 0];
+
+    for (let i = 0; i < grid.length; i++) {
+
+        const estado = grid[i];
+
+        if (estado > 0) {
+            contagem[estado - 1]++;
+        }
+    }
+
+    const sobreviventes = contarAtivas().length;
+
+    scoreDiv.innerHTML = terminou
+        ? 'BATALHA FINALIZADA'
+        : `RODADA ${rodada} | ${sobreviventes} SOBREVIVENTES`;
+
+    estatisticas.innerHTML = NOMES.map((nome, i) => {
+
+        const cor = `rgb(${CORES[i].join(',')})`;
+
+        const formiga = formigas[i];
+
+        const situacao = formiga.viva
+            ? 'VIVA'
+            : 'ELIMINADA';
+
+        return `
+            <span style="color:${cor}">
+                ${nome}: ${contagem[i]} células | ${situacao}
+            </span>
+        `;
+
+    }).join('<br>');
+}
+
+
+// ======================================
+// LOOP PRINCIPAL
+// ======================================
+
+function loop() {
+
+    if (!rodando || terminou) return;
+
+    for (let i = 0; i < velocidade; i++) {
+
+        executarRodada();
+
+        if (terminou) break;
+    }
+
+    renderizar();
+    atualizarEstatisticas();
+
+    if (rodando && !terminou) {
+
+        animacao = requestAnimationFrame(loop);
+    }
+}
+
+
+// ======================================
+// PAUSAR
+// ======================================
+
+function alternarPausa() {
+
+    if (terminou) return;
+
+    rodando = !rodando;
+
+    const botao = document.getElementById('pausa');
+
+    if (rodando) {
+
+        botao.textContent = 'PAUSAR';
+
+        loop();
+
+    } else {
+
+        botao.textContent = 'CONTINUAR';
+
+        if (animacao !== null) {
+
+            cancelAnimationFrame(animacao);
+            animacao = null;
+        }
+    }
+}
+
+
+// ======================================
+// VELOCIDADE
+// ======================================
+
+function alternarVelocidade() {
+
+    if (velocidade === 1) {
+
+        velocidade = 3;
+
+    } else if (velocidade === 3) {
+
+        velocidade = 8;
+
+    } else {
+
+        velocidade = 1;
+    }
+
+    document.getElementById('velocidade').textContent =
+        'VELOCIDADE: ' +
+        (velocidade === 1 ? 'NORMAL' :
+         velocidade === 3 ? 'RÁPIDA' : 'INSANA');
+}
+
+
+// ======================================
+// REINICIAR
+// ======================================
+
+function resetSimulation() {
+
+    if (animacao !== null) {
+
+        cancelAnimationFrame(animacao);
+        animacao = null;
+    }
+
+    grid.fill(0);
+
+    rodada = 0;
+
+    rodando = true;
+    terminou = false;
+
+    laserEffect = null;
+    mouseX = CENTRO;
+    mouseY = CENTRO;
+
+    resultDiv.hidden = true;
+
+    document.getElementById('pausa').textContent = 'PAUSAR';
+
+    criarFormigas();
+
+    initCanvas();
+
+    renderizar();
+    atualizarEstatisticas();
+
+    loop();
+}
+
+
+// ======================================
+// INICIAR
+// ======================================
+
+resetSimulation();
+
+</script>
+
+</body>
+</html>
